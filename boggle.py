@@ -1,9 +1,9 @@
 import random as rng
 
-
+rng.seed(123)
 # Todo:
-  # Dictionary tree
   # Evolutionary board
+  # Animate solutions
 
 alphabet = 'abcdefghijklmnopqrstuvwxyz'
 
@@ -75,15 +75,16 @@ class Board():
     content = [c for c in content if c in alphabet]
     content = content + [rng.choice(alphabet) for x in range(self.width*self.height - len(content))]
     self.letters = self.read_content_string(content)
-    pass
+
+    self.neighbours = {(x,y) : self.get_neighbours(x,y) for x in range(self.width) for y in range(self.height)}
 
   def read_content_string(self, content):
     letters = [content[i : i+self.width] for i in range(0,self.height*self.width,self.width )]
     # letters =
     return letters
 
-  @memoize
-  def neighbours(self, x, y):
+
+  def get_neighbours(self, x, y):
     """Neighbours of a square.
        Cartesian, non diagonal, no wraparound
     """
@@ -93,7 +94,7 @@ class Board():
                    # and dx * dy == 0           # Not diagonal
                    and not (dx == 0 and dy == 0) # Not itself
                    ]
-    # neighbouring_letters = [self[x,y] for x, y in neighbours]
+    neighbouring_letters = [self[x,y] for x, y in neighbours]
     return neighbours#, neighbouring_letters
 
   def __getitem__(self, key):
@@ -121,39 +122,34 @@ class Solver():
 
   def solve(self, board):
     """Start the solver from every square"""
-    self.solution_set = set()
-    self.score = 0
+    sol_set = set()
     for x in range(board.width):
       for y in range(board.height):
         for s in self.solve_from(board, (x,y), prefix = '', visited = []):
-          if s not in self.solution_set:
-            self.solution_set.add(s)
-            self.score += self.score_word(s)
+          if s not in sol_set:
+            sol_set.add(s)
             yield s
 
-  def score_word(self, word):
-    length = len(word)
-    if length>= 8: return 11
-    return [0,0,0,1,1,2,3,5][length]
-
-  def solve_from(self, board, fromsquare = (0,0), prefix = '', visited = [] ):
+  def solve_from(self, board, fromsquare = (0,0), prefix = '', visited = [], ptree = None ):
     newletter = board[fromsquare]
     word = prefix + newletter
     visited += [fromsquare]
 
+    if not ptree:
+      is_word, ptree = self.dictionary[word]
+    else: # Optimise: Reuse the previous ptree
+      is_word, ptree = ptree[newletter]
 
-    is_word, PTree = self.dictionary[word]
 
     if is_word:
       yield word
-    if len(PTree) == 0:
+    if len(ptree) == 0:
       # Stop recursing
       return None
 
-    neighbours = [nb for nb in board.neighbours(*fromsquare)
-                  if nb not in visited]
-    for nb in neighbours:
-      yield from self.solve_from(board, nb, word, visited)
+    for nb in board.neighbours[fromsquare]: #Optimise: Refactor list-comprehension
+      if nb not in visited:
+        yield from self.solve_from(board, nb, word, visited, ptree)
 
   def load_dict(self, dict_path):
     with open(dict_path, 'r') as f:
@@ -163,14 +159,23 @@ class Solver():
       self.dictionary.add_word(word)
 
 
+def profile_me():
+  S = Solver('english.txt')
+  for i in range(1000):
+    B = Board(4,4, content = '')
+    sols = S.solve(B)
+    list(sols)
+
+
 if __name__ == "__main__":
 
   S = Solver('english.txt')
 
+  B = Board(4,4, content = 'iled vrdv oery nlsa')
+  # B = Board(4,4, content = 'iled vrdv nlsa')
 
-  B = Board(4,4, content = '')
   print(B)
+  print(sorted(list(S.solve(B))))
+  # print(B)
 
-  solutions = sorted(S.solve(B), key = lambda x : -len(x))
-  print('wordcount: {}\nscore    : {}'.format(len(solutions), S.score))
-  print(' '.join(solutions))
+  # print('wordcount: {}\nscore    : {}'.format(len(solutions), S.score))
